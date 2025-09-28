@@ -6,7 +6,9 @@ import re
 import sys
 import signal
 from collections import defaultdict
+import requests
 from flask import Flask, render_template, jsonify
+
 
 # --- Configuration ---
 LISTEN_PORT = 8080
@@ -25,6 +27,12 @@ stats = {
 intrusion_logs = []
 domain_visits = defaultdict(int)
 conn_lock = threading.Lock()
+
+REAL_PUBLIC_IP = "Unknown"
+try:
+    REAL_PUBLIC_IP = requests.get('https://api.ipify.org', timeout=5).text
+except Exception as e:
+    print(f"[WARNING] Could not determine public IP: {e}")
 
 # --- Intrusion Detection System (IDS) ---
 class SimpleIDS:
@@ -98,17 +106,23 @@ def is_blocked(host):
 def anonymize_request(request_data: str) -> str:
     lines = request_data.splitlines()
     if not lines: return request_data
-    
+
     headers = {line.split(':', 1)[0].lower(): line.split(':', 1)[1].strip()
                for line in lines[1:] if ':' in line}
 
     fake_ip = random.choice(FAKE_IPS)
+
+    # --- THIS IS THE NEW LINE ---
+    with conn_lock:
+        stats['last_spoofed_ip'] = fake_ip
+    # ----------------------------
+
     headers['x-forwarded-for'] = fake_ip
     headers['x-real-ip'] = fake_ip
     headers['user-agent'] = random.choice(FAKE_USER_AGENTS)
-    
+
     for h in ['via', 'x-proxy-id', 'forwarded']: headers.pop(h, None)
-    
+
     new_headers = [f"{k.title()}: {v}" for k, v in headers.items()]
     return '\r\n'.join([lines[0]] + new_headers + ['', ''])
 
@@ -211,6 +225,7 @@ def get_stats():
     with conn_lock:
         current_stats = stats.copy()
         current_stats["top_domains"] = sorted(domain_visits.items(), key=lambda x: x[1], reverse=True)[:5]
+        current_stats["real_ip"] = REAL_PUBLIC_IP
     return jsonify(current_stats)
 
 @app.route("/api/alerts")
