@@ -41,6 +41,9 @@ async function updateDashboard() {
     document.getElementById('activeConnections').textContent = stats.active_connections.toLocaleString();
     document.getElementById('topDomain').textContent = stats.top_domains.length > 0 ? stats.top_domains[0][0] : 'N/A';
 
+    document.getElementById('realIp').textContent = stats.real_ip || "Unknown";
+    document.getElementById('spoofedIp').textContent = stats.last_spoofed_ip || "N/A";
+
     // Update live alerts table
     const alertsContainer = document.getElementById('liveAlerts');
     alertsContainer.innerHTML = alerts.map(alert => `
